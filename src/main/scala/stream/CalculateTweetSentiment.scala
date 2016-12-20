@@ -9,8 +9,8 @@ import org.apache.spark.sql.SQLContext
 import utilities.Utilities._
 
 
-/** Listens to a stream of tweets and saves them to disk. */
-object SaveTweets {
+/** Listens to a stream of tweets, calculate the affinity (sentiment) of the words in a batch and print them for each batch. */
+object CalculateTweetSentiment {
 
   System.setProperty(
     "spark.sql.warehouse.dir", 
@@ -24,7 +24,7 @@ object SaveTweets {
     // Configure Twitter credentials using twitter.txt
     setupTwitter()
     
-    val sparkConf = new SparkConf().setAppName("Elections")
+    val sparkConf = new SparkConf().setAppName("StreamTwitter")
     sparkConf.setMaster("local[*]")
        
     val sc = new SparkContext(sparkConf)
@@ -41,14 +41,14 @@ object SaveTweets {
     val affinText = affinWords.union(affinSmiley).map(w => AffinRecord(w._1, w._2)).toDF();
     affinText.createOrReplaceTempView("affinity")
     
+    //TO DEBUG
     //affinText.printSchema()
-    
     //affinText.foreach(println)
  
     
     // Set up a Spark streaming context named "SaveTweets" that runs locally using
     // all CPU cores and 60-second batches of data
-    val ssc = new StreamingContext(sc, Seconds(10))
+    val ssc = new StreamingContext(sc, Seconds(600))
     
     // Setup log level.
     setupLogging()
@@ -70,30 +70,31 @@ object SaveTweets {
       //words.foreach(print)
       val wordMatches = words.map(w => TweetWords(w._1, w._2)).toDF();
       
-        wordMatches.createOrReplaceTempView("wordCount")
+      wordMatches.createOrReplaceTempView("wordCount")
         
       val AffinityCount =
         sqlContext.sql("select word as words, (affin * count) as product from wordCount, affinity where affinity.word = wordCount.tweetWord")
         
-        AffinityCount.show()
+      //AffinityCount.show()
         
-         AffinityCount.createOrReplaceTempView("AffinityCount")
+      AffinityCount.createOrReplaceTempView("AffinityCount")
          
-         //AffinityCount.printSchema()
+      //TO DEBUG
+      //AffinityCount.printSchema()
          
-        val totalAffinity =
+      val totalAffinity =
         sqlContext.sql("select sum(product) from AffinityCount")
         
-        totalAffinity.show()
+      //TO DEBUG  
+      //totalAffinity.show()
         
-        println("Affinity count: " + totalAffinity)
+      println(""+time+" - Affinity count: " + totalAffinity.head().getLong(0))
         
     })
       
     
    
-    // Keep count of how many Tweets we've received so we can stop automatically
-    // (and not fill up your disk!)
+    // To keep count of how many Tweets we've received
     var totalTweets:Long = 0
         
     statuses.foreachRDD((rdd, time) => {
@@ -102,20 +103,19 @@ object SaveTweets {
         // Combine each partition's results into a single RDD:
         val repartitionedRDD = rdd.repartition(1).cache()
         //val repartitionedRDD = rdd.cache()
-        // And print out a directory with the results.
-        repartitionedRDD.saveAsTextFile("data/Tweets_" + time.milliseconds.toString)
-        // Stop once we've collected 1000 tweets.
+        // To debug print tweets to a directory.
+        //repartitionedRDD.saveAsTextFile("data/Tweets_" + time.milliseconds.toString)
+
         totalTweets += repartitionedRDD.count()
         println("Tweet count: " + totalTweets)
-        if (totalTweets > 50) {
+        //Stop the process if total has exceeded.
+        if (totalTweets > 5000) {
           System.exit(0)
         }
       }
     })
     
-    // You can also write results into a database of your choosing, but we'll do that later.
-    
-    // Set a checkpoint directory, and kick it all off
+    // Set a checkpoint directory, and start.
     ssc.checkpoint("D:/Spark/checkpoint/")
     ssc.start()
     ssc.awaitTermination()

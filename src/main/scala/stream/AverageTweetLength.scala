@@ -9,8 +9,7 @@ import utilities.Utilities._
 import java.util.concurrent._
 import java.util.concurrent.atomic._
 
-/** Uses thread-safe counters to keep track of the average length of
- *  Tweets in a stream.
+/** Calculate the average length of Tweets, the tweet with maximum characters and the one with minimum characters in a stream.
  */
 object AverageTweetLength {
   
@@ -22,7 +21,7 @@ object AverageTweetLength {
     
     // Set up a Spark streaming context named "AverageTweetLength" that runs locally using
     // all CPU cores and one-second batches of data
-    val ssc = new StreamingContext("local[*]", "AverageTweetLength", Seconds(5))
+    val ssc = new StreamingContext("local[*]", "AverageTweetLength", Seconds(60))
     
     // Get rid of log spam (should be called after the context is set up)
     setupLogging()
@@ -41,11 +40,10 @@ object AverageTweetLength {
     // these counters are thread-safe.
     var totalTweets = new AtomicLong(0)
     var totalChars = new AtomicLong(0)
-    //var maxChars = new AtomicLong(0)
+    var maxChars = new AtomicLong(0)
     
-    // In Spark 1.6+, you  might also look into the mapWithState function, which allows
-    // you to safely and efficiently keep track of global state with key/value pairs.
-    // We'll do that later in the course.
+    // To keep count of how many Tweets we've received
+    var totalTweetsProcessed:Long = 0
     
     lengths.foreachRDD((rdd, time) => {
       
@@ -62,11 +60,16 @@ object AverageTweetLength {
         println("Total tweets: " + totalTweets.get() + 
             " Total characters: " + totalChars.get() + 
             " Average: " + totalChars.get() / totalTweets.get()+ " maxChars "+maxChars+ " minChars "+minChars)
+            
+        totalTweetsProcessed += rdd.count()
+        //Stop the process if total has exceeded.
+        if (totalTweetsProcessed > 5000) {
+          System.exit(0)
+        }
       }
     })
     
-    // Set a checkpoint directory, and kick it all off
-    // I could watch this all day!
+    // Set a checkpoint directory, and start
     ssc.checkpoint("D:/Spark/checkpoint/")
     ssc.start()
     ssc.awaitTermination()
