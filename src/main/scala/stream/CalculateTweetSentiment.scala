@@ -48,13 +48,13 @@ object CalculateTweetSentiment {
     
     // Set up a Spark streaming context named "SaveTweets" that runs locally using
     // all CPU cores and 60-second batches of data
-    val ssc = new StreamingContext(sc, Seconds(600))
+    val ssc = new StreamingContext(sc, Seconds(60))
     
     // Setup log level.
     setupLogging()
 
     //Define the filters
-    val arr = Array("India")
+    val arr = Array("Rogue One", "#RogueOne")
     
    
     // Create a DStream from Twitter using our streaming context
@@ -82,13 +82,16 @@ object CalculateTweetSentiment {
       //TO DEBUG
       //AffinityCount.printSchema()
          
-      val totalAffinity =
-        sqlContext.sql("select sum(product) from AffinityCount")
-        
+      val negativeAffinity =
+        sqlContext.sql("select sum(product) from AffinityCount where product < 0")
+
+      val positiveAffinity =
+        sqlContext.sql("select sum(product) from AffinityCount where product >= 0")
+
       //TO DEBUG  
       //totalAffinity.show()
         
-      println(""+time+" - Affinity count: " + totalAffinity.head().getLong(0))
+      println(""+time+" ms : Negative Affinity: " + negativeAffinity.head().getLong(0)+" - Positive Affinity: " + positiveAffinity.head().getLong(0))
         
     })
       
@@ -116,7 +119,7 @@ object CalculateTweetSentiment {
     })
     
     // Set a checkpoint directory, and start.
-    ssc.checkpoint("D:/Spark/checkpoint/")
+    ssc.checkpoint("checkpoint")
     ssc.start()
     ssc.awaitTermination()
   }  
